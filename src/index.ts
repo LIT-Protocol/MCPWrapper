@@ -69,16 +69,20 @@ const main = async (): Promise<void> => {
               name: tool.name,
               arguments: args,
             });
+            const content = result.content as { type: string; text: string }[];
             console.log(result);
             return {
-              content: [{ type: "text", text: "" }],
+              content: content.map((c) => ({
+                type: "text",
+                text: c.text,
+              })),
             };
           }
         );
       }
       // Start receiving messages on stdin and sending messages on stdout
 
-      app.post("/mcp", async (req: IncomingMessage, res: ServerResponse) => {
+      app.post("/mcp", async (req: express.Request, res: express.Response) => {
         // In stateless mode, create a new instance of transport and server for each request
         // to ensure complete isolation. A single instance would cause request ID collisions
         // when multiple clients connect concurrently.
@@ -94,22 +98,18 @@ const main = async (): Promise<void> => {
             server.close();
           });
           await server.connect(transport);
-          await transport.handleRequest(req, res);
+          await transport.handleRequest(req, res, req.body);
         } catch (error) {
           console.error("Error handling MCP request:", error);
           if (!res.headersSent) {
-            res.statusCode = 500;
-            res.write(
-              JSON.stringify({
-                jsonrpc: "2.0",
-                error: {
-                  code: -32603,
-                  message: "Internal server error",
-                },
-                id: null,
-              })
-            );
-            res.end();
+            res.status(500).json({
+              jsonrpc: "2.0",
+              error: {
+                code: -32603,
+                message: "Internal server error",
+              },
+              id: null,
+            });
           }
         }
       });
