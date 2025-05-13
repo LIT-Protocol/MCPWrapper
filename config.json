@@ -1,13 +1,3 @@
 {
-  "mcpServers": {
-    "whatsapp": {
-      "command": "/Users/chris/.local/bin/uv",
-      "args": [
-        "--directory",
-        "/Users/chris/Documents/WorkStuff/Lit/Vincent/whatsapp-mcp/whatsapp-mcp-server",
-        "run",
-        "main.py"
-      ]
-    }
-  }
+  "composioApps": ["gmail"]
 }
