@@ -8,6 +8,7 @@ import {
 import fs from "fs";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { OpenAIToolSet } from "composio-core";
+import JSONPath from "jsonpath";
 
 // Load environment variables
 config();
@@ -16,6 +17,22 @@ interface MCPConfig {
   composioApps: string[];
 }
 
+interface ToolConfig {
+  toolType: string;
+  appName: string;
+  toolName: string;
+}
+
+interface PolicyConfig {
+  toolName: string;
+  paramsFilter: {
+    query: string;
+  };
+  responseFilter: {
+    jsonPath: string;
+    contains: string[];
+  };
+}
 const main = async (): Promise<void> => {
   // load the config and list of MCPs
   const config = JSON.parse(
@@ -23,15 +40,23 @@ const main = async (): Promise<void> => {
   ) as MCPConfig;
   const composioApps = config.composioApps;
 
+  // load the tools
+  const permittedTools = JSON.parse(
+    fs.readFileSync("tools.json", "utf8")
+  ) as ToolConfig[];
+  const permittedPolicies = JSON.parse(
+    fs.readFileSync("policies.json", "utf8")
+  ) as PolicyConfig[];
+
   // create composio client and connect to the apps
   const toolset = new OpenAIToolSet({ apiKey: process.env.COMPOSIO_API_KEY });
 
-  const tools = await toolset.getTools({
+  const composioTools = await toolset.getTools({
     apps: composioApps,
   });
 
   console.log("Connected to Composio");
-  console.log(`composio tools`, JSON.stringify(tools, null, 2));
+  console.log(`composio tools`, JSON.stringify(composioTools, null, 2));
 
   // create passthrough server
   const server = new Server(
@@ -46,53 +71,65 @@ const main = async (): Promise<void> => {
 
   server.setRequestHandler(ListToolsRequestSchema, async () => {
     return {
-      tools: tools.map((tool) => ({
-        name: tool.function.name,
-        description: tool.function.description || "",
-        inputSchema: tool.function.parameters,
-      })),
+      tools: composioTools
+        .filter((tool) =>
+          permittedTools.map((t) => t.toolName).includes(tool.function.name)
+        )
+        .map((tool) => ({
+          name: tool.function.name,
+          description: tool.function.description || "",
+          inputSchema: tool.function.parameters,
+        })),
     };
   });
 
   server.setRequestHandler(CallToolRequestSchema, async (request) => {
     const { name, arguments: args } = request.params;
     console.log(`tool: ${name} called with args: ${JSON.stringify(args)}`);
+    // apply input policies
+    const inputPolicy = permittedPolicies.find((p) => p.toolName === name);
+    const filteredArgs = args!;
+    if (inputPolicy) {
+      console.log(`input policy found for tool: ${name}`);
+      // if there's an input policy, replace the args with the filtered args, so that we only call the tool with filtered args.
+      for (const [key, value] of Object.entries(inputPolicy.paramsFilter)) {
+        filteredArgs[key] = value;
+      }
+    }
+    console.log(
+      `calling tool: ${name} with args: ${JSON.stringify(filteredArgs)}`
+    );
     // call the client tool
     const result = await toolset.executeAction({
       action: name, // Use Enum for type safety
-      params: args,
+      params: filteredArgs,
       entityId: "chris", // Optional: Specify if not 'default'
     });
     console.log("result of tool call: ", result);
-    if (
-      result.data &&
-      result.data.messages &&
-      result.data.messages instanceof Array &&
-      result.data.messages.length > 0
-    ) {
-      console.log("messages: ", result.data.messages);
-
-      // remove anything that does not include the string "unsubscribe"
-      const filteredMessages = result.data.messages.filter((message: any) =>
-        message.messageText.includes("unsubscribe")
+    console.log(`messages: ${result?.data?.messages}`);
+    // apply response filters
+    const responsePolicy = permittedPolicies.find((p) => p.toolName === name);
+    if (responsePolicy) {
+      console.log(`response policy found for tool: ${name}`);
+      // use jsonpath to filter the response
+      const extractedResponses = JSONPath.query(
+        result,
+        responsePolicy.responseFilter.jsonPath
       );
-
+      // filter the results based on the contains array
+      const filteredResults = extractedResponses.filter((result: any) =>
+        responsePolicy.responseFilter.contains.some((c) => result.includes(c))
+      );
+      console.log("filtered result: ", filteredResults);
       return {
-        content: filteredMessages.map((message: any) => ({
+        content: filteredResults.map((result: any) => ({
           type: "text",
-          text: message.messageText,
+          text: result,
         })),
       };
+    } else {
+      return result;
     }
-
-    return {
-      content: [
-        {
-          type: "text",
-          text: "No results found",
-        },
-      ],
-    };
   });
 
   // create the express server for the MCP server

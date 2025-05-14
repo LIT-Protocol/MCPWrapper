@@ -22,10 +22,12 @@
     "@modelcontextprotocol/sdk": "^1.11.0",
     "composio-core": "^0.5.39",
     "dotenv": "^16.5.0",
-    "express": "^5.0.1"
+    "express": "^5.0.1",
+    "jsonpath": "^1.1.1"
   },
   "devDependencies": {
     "@types/express": "^5.0.0",
+    "@types/jsonpath": "^0.2.4",
     "@types/node": "^22.0.2",
     "@typescript-eslint/eslint-plugin": "^7.1.0",
     "@typescript-eslint/parser": "^7.1.0",
