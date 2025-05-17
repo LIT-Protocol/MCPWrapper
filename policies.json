@@ -2,11 +2,13 @@
   {
     "toolName": "GMAIL_FETCH_EMAILS",
     "paramsFilter": {
-      "query": "crypto newsletter"
+      "query": "crypto newsletter",
+      "max_results": 20
     },
     "responseFilter": {
       "jsonPath": "$.data.messages[*].messageText",
-      "contains": ["unsubscribe"]
+      "contains": ["unsubscribe"],
+      "convertResults": "htmlToMarkdown"
     }
   }
 ]

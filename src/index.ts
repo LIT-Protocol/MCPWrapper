@@ -9,6 +9,7 @@ import fs from "fs";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { OpenAIToolSet } from "composio-core";
 import JSONPath from "jsonpath";
+import TurndownService from "turndown";
 
 // Load environment variables
 config();
@@ -31,6 +32,7 @@ interface PolicyConfig {
   responseFilter: {
     jsonPath: string;
     contains: string[];
+    convertResults: string;
   };
 }
 const main = async (): Promise<void> => {
@@ -56,7 +58,7 @@ const main = async (): Promise<void> => {
   });
 
   console.log("Connected to Composio");
-  console.log(`composio tools`, JSON.stringify(composioTools, null, 2));
+  // console.log(`composio tools`, JSON.stringify(composioTools, null, 2));
 
   // create passthrough server
   const server = new Server(
@@ -105,22 +107,49 @@ const main = async (): Promise<void> => {
       params: filteredArgs,
       entityId: "chris", // Optional: Specify if not 'default'
     });
-    console.log("result of tool call: ", result);
-    console.log(`messages: ${result?.data?.messages}`);
+    // console.log("result of tool call: ", result);
+    // console.log(`messages: ${JSON.stringify(result?.data?.messages, null, 2)}`);
     // apply response filters
     const responsePolicy = permittedPolicies.find((p) => p.toolName === name);
     if (responsePolicy) {
       console.log(`response policy found for tool: ${name}`);
+      const extractedSubjectedForDebug = JSONPath.query(
+        result,
+        "$.data.messages[*].subject"
+      );
+      console.log(
+        "subjects of the emails before filtering: ",
+        extractedSubjectedForDebug
+      );
       // use jsonpath to filter the response
       const extractedResponses = JSONPath.query(
         result,
         responsePolicy.responseFilter.jsonPath
       );
+      console.log(`We got ${extractedResponses.length} responses`);
+      // console.log("extractedResponses", extractedResponses);
       // filter the results based on the contains array
-      const filteredResults = extractedResponses.filter((result: any) =>
-        responsePolicy.responseFilter.contains.some((c) => result.includes(c))
+      let filteredResults = extractedResponses.filter((result: any) =>
+        responsePolicy.responseFilter.contains.some((c) =>
+          result.toLowerCase().includes(c.toLowerCase())
+        )
       );
-      console.log("filtered result: ", filteredResults);
+      console.log(
+        `After filtering, we got ${filteredResults.length} filtered results`
+      );
+      if (
+        responsePolicy.responseFilter.convertResults &&
+        responsePolicy.responseFilter.convertResults === "htmlToMarkdown"
+      ) {
+        const turndown = new TurndownService();
+        turndown.remove("style");
+        filteredResults = filteredResults.map((result: any) =>
+          turndown.turndown(result)
+        );
+        console.log(
+          `After converting to markdown, we got ${filteredResults.length} results`
+        );
+      }
       return {
         content: filteredResults.map((result: any) => ({
           type: "text",
