@@ -1,6 +1,7 @@
 [
   {
-    "toolType": "Composio",
+    "toolType": "MCP",
+    "toolProvider": "Composio",
     "appName": "gmail",
     "toolName": "GMAIL_FETCH_EMAILS"
   }

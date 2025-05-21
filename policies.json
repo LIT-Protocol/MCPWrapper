@@ -1,5 +1,6 @@
 [
   {
+    "policyType": "MCP",
     "toolName": "GMAIL_FETCH_EMAILS",
     "paramsFilter": {
       "query": "crypto newsletter",
