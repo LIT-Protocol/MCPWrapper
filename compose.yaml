@@ -15,7 +15,7 @@ services:
       NODE_ENV: production
     ports:
       - 3002:3002
-    env_file: ".env"
+    # env_file: ".env"
 
 # The commented out section below is an example of how to define a PostgreSQL
 # database that your application can use. `depends_on` tells Docker Compose to
