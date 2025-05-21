@@ -8,8 +8,7 @@ import {
 import fs from "fs";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { OpenAIToolSet } from "composio-core";
-import JSONPath from "jsonpath";
-import TurndownService from "turndown";
+import { PolicyEngine } from "./policy/PolicyEngine.js";
 
 // Load environment variables
 config();
@@ -24,17 +23,6 @@ interface ToolConfig {
   toolName: string;
 }
 
-interface PolicyConfig {
-  toolName: string;
-  paramsFilter: {
-    query: string;
-  };
-  responseFilter: {
-    jsonPath: string;
-    contains: string[];
-    convertResults: string;
-  };
-}
 const main = async (): Promise<void> => {
   // load the config and list of MCPs
   const config = JSON.parse(
@@ -42,13 +30,16 @@ const main = async (): Promise<void> => {
   ) as MCPConfig;
   const composioApps = config.composioApps;
 
-  // load the tools
+  // load the tools and policies
   const permittedTools = JSON.parse(
     fs.readFileSync("tools.json", "utf8")
   ) as ToolConfig[];
   const permittedPolicies = JSON.parse(
     fs.readFileSync("policies.json", "utf8")
-  ) as PolicyConfig[];
+  );
+
+  // Initialize policy engine
+  const policyEngine = new PolicyEngine(permittedPolicies);
 
   // create composio client and connect to the apps
   const toolset = new OpenAIToolSet({ apiKey: process.env.COMPOSIO_API_KEY });
@@ -58,7 +49,6 @@ const main = async (): Promise<void> => {
   });
 
   console.log("Connected to Composio");
-  // console.log(`composio tools`, JSON.stringify(composioTools, null, 2));
 
   // create passthrough server
   const server = new Server(
@@ -88,77 +78,22 @@ const main = async (): Promise<void> => {
   server.setRequestHandler(CallToolRequestSchema, async (request) => {
     const { name, arguments: args } = request.params;
     console.log(`tool: ${name} called with args: ${JSON.stringify(args)}`);
-    // apply input policies
-    const inputPolicy = permittedPolicies.find((p) => p.toolName === name);
-    const filteredArgs = args!;
-    if (inputPolicy) {
-      console.log(`input policy found for tool: ${name}`);
-      // if there's an input policy, replace the args with the filtered args, so that we only call the tool with filtered args.
-      for (const [key, value] of Object.entries(inputPolicy.paramsFilter)) {
-        filteredArgs[key] = value;
-      }
-    }
+
+    // Apply input policies
+    const filteredArgs = policyEngine.applyInputPolicy(name, args!);
     console.log(
       `calling tool: ${name} with args: ${JSON.stringify(filteredArgs)}`
     );
-    // call the client tool
+
+    // Call the client tool
     const result = await toolset.executeAction({
-      action: name, // Use Enum for type safety
+      action: name,
       params: filteredArgs,
-      entityId: "chris", // Optional: Specify if not 'default'
+      entityId: "chris",
     });
-    // console.log("result of tool call: ", result);
-    // console.log(`messages: ${JSON.stringify(result?.data?.messages, null, 2)}`);
-    // apply response filters
-    const responsePolicy = permittedPolicies.find((p) => p.toolName === name);
-    if (responsePolicy) {
-      console.log(`response policy found for tool: ${name}`);
-      const extractedSubjectedForDebug = JSONPath.query(
-        result,
-        "$.data.messages[*].subject"
-      );
-      console.log(
-        "subjects of the emails before filtering: ",
-        extractedSubjectedForDebug
-      );
-      // use jsonpath to filter the response
-      const extractedResponses = JSONPath.query(
-        result,
-        responsePolicy.responseFilter.jsonPath
-      );
-      console.log(`We got ${extractedResponses.length} responses`);
-      // console.log("extractedResponses", extractedResponses);
-      // filter the results based on the contains array
-      let filteredResults = extractedResponses.filter((result: any) =>
-        responsePolicy.responseFilter.contains.some((c) =>
-          result.toLowerCase().includes(c.toLowerCase())
-        )
-      );
-      console.log(
-        `After filtering, we got ${filteredResults.length} filtered results`
-      );
-      if (
-        responsePolicy.responseFilter.convertResults &&
-        responsePolicy.responseFilter.convertResults === "htmlToMarkdown"
-      ) {
-        const turndown = new TurndownService();
-        turndown.remove("style");
-        filteredResults = filteredResults.map((result: any) =>
-          turndown.turndown(result)
-        );
-        console.log(
-          `After converting to markdown, we got ${filteredResults.length} results`
-        );
-      }
-      return {
-        content: filteredResults.map((result: any) => ({
-          type: "text",
-          text: result,
-        })),
-      };
-    } else {
-      return result;
-    }
+
+    // Apply response policies
+    return policyEngine.applyResponsePolicy(name, result);
   });
 
   // create the express server for the MCP server
@@ -167,10 +102,6 @@ const main = async (): Promise<void> => {
 
   // bind the MCP server to the express server
   app.post("/mcp", async (req: express.Request, res: express.Response) => {
-    // In stateless mode, create a new instance of transport and server for each request
-    // to ensure complete isolation. A single instance would cause request ID collisions
-    // when multiple clients connect concurrently.
-
     try {
       const transport: StreamableHTTPServerTransport =
         new StreamableHTTPServerTransport({

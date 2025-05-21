@@ -12,7 +12,8 @@
     "dev": "tsc -w",
     "lint": "eslint . --ext .ts",
     "lint:fix": "eslint . --ext .ts --fix",
-    "connectUser": "node dist/connectUser.js"
+    "connectGmailUser": "node dist/connectGmailUser.js",
+    "connectFbUser": "node dist/connectFbUser.js"
   },
   "keywords": [],
   "author": "",
