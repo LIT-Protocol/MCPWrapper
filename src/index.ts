@@ -24,6 +24,9 @@ interface ToolConfig {
 }
 
 const main = async (): Promise<void> => {
+  // output a test env var to see if loading secrets is working
+  console.log("ENV_VAR_SECRET_TEST", process.env.ENV_VAR_SECRET_TEST);
+
   // load the config and list of MCPs
   const config = JSON.parse(
     fs.readFileSync("config.json", "utf8")

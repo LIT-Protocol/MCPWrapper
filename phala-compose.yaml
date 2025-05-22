@@ -1,3 +1,10 @@
 services:
   server:
     image: glitch003/mcpwrapper
+    environment:
+      - PORT=3002
+      - NODE_ENV=production
+      - COMPOSIO_API_KEY=${COMPOSIO_API_KEY}
+      - COMPOSIO_GMAIL_INTEGRATION_ID=${COMPOSIO_GMAIL_INTEGRATION_ID}
+      - COMPOSIO_FB_INTEGRATION_ID=${COMPOSIO_FB_INTEGRATION_ID}
+      - ENV_VAR_SECRET_TEST=${ENV_VAR_SECRET_TEST}
