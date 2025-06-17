@@ -9,6 +9,9 @@ import fs from "fs";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { OpenAIToolSet } from "composio-core";
 import { PolicyEngine } from "./policy/PolicyEngine.js";
+import { TappdClient } from "@phala/dstack-sdk";
+import { toViemAccountSecure } from "@phala/dstack-sdk/viem";
+import { ethers } from "ethers";
 
 // Load environment variables
 config();
@@ -124,6 +127,46 @@ const main = async (): Promise<void> => {
             message: "Internal server error",
           },
           id: null,
+        });
+      }
+    }
+  });
+
+  // Attest endpoint
+  app.post("/attest", async (req: express.Request, res: express.Response) => {
+    try {
+      console.log("Attest endpoint called with body:", req.body);
+      const { challenge } = req.body;
+
+      const client = new TappdClient();
+
+      const keyResult = await client.deriveKey("<unique-id>"); // Same unique-id will get same key
+      const account = toViemAccountSecure(keyResult);
+      const signature = await account.signMessage({ message: challenge });
+
+      const userData = JSON.stringify({
+        challenge,
+        signature,
+      });
+      const hashedUserData = ethers.utils.arrayify(
+        ethers.utils.sha256(ethers.utils.toUtf8Bytes(userData))
+      );
+      // Get a TDX quote for the given custom data and hash algorithm.
+      const quoteResult = await client.tdxQuote(hashedUserData, "raw");
+
+      res.status(200).json({
+        quote: quoteResult.quote,
+        signature,
+        userData, // for debug, remove in prod
+        hashedUserData: ethers.utils.hexlify(hashedUserData), // for debug, remove in prod
+      });
+    } catch (error) {
+      console.error("Error handling attest request:", error);
+      if (!res.headersSent) {
+        res.status(500).json({
+          success: false,
+          error: "Internal server error",
+          message: error instanceof Error ? error.message : "Unknown error",
         });
       }
     }

@@ -9,3 +9,5 @@ services:
       - COMPOSIO_FB_INTEGRATION_ID=${COMPOSIO_FB_INTEGRATION_ID}
     ports:
       - 3002:3002
+    volumes:
+    - /var/run/tappd.sock:/var/run/tappd.sock

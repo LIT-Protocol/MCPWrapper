@@ -1,3 +1,3 @@
 #!/bin/bash
 
-phala cvms create -n MCPWrapper -c phala-compose.yaml -e .env
+npx phala cvms create -n MCPWrapper -c phala-compose.yaml -e .env
